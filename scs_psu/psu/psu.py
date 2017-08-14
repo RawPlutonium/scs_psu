@@ -1,123 +1,117 @@
 """
-Created on 10 Feb 2017
+Created on 8 Aug 2017
 
 @author: Bruno Beloff (bruno.beloff@southcoastscience.com)
 """
 
-from scs_psu.psu.stm32 import STM32
+import json
+
+from collections import OrderedDict
+
+from scs_core.psu.psu_status import PSUStatus
+from scs_core.psu.psu_uptime import PSUUptime
+from scs_core.psu.psu_version import PSUVersion
+
+from scs_host.sys.host_serial import HostSerial
 
 
 # --------------------------------------------------------------------------------------------------------------------
 
 class PSU(object):
     """
-    STM32 32-Bit ARM Cortex-M Microcontroller
+    South Coast Science PSU v1.0.0 via UART
     """
+
+    __BAUD_RATE =           9600
+
+    __SERIAL_TIMEOUT =      4.0
+
 
     # ----------------------------------------------------------------------------------------------------------------
 
-    def __init__(self):
+    def __init__(self, device):
         """
         Constructor
         """
-        self.__mcu = STM32()
+        self.__device = device
 
 
     # ----------------------------------------------------------------------------------------------------------------
 
-    def power_cycle(self, wait_secs, off_secs):
-        self.__mcu.open()
+    def version(self):
+        response = self.communicate("version")
+        jdict = json.loads(response, object_pairs_hook=OrderedDict)
+
+        return PSUVersion.construct_from_jdict(jdict)
+
+
+    def status(self):
+        response = self.communicate("status")
+        jdict = json.loads(response, object_pairs_hook=OrderedDict)
+
+        return PSUStatus.construct_from_jdict(jdict)
+
+
+    def uptime(self):
+        response = self.communicate("uptime")
+        jdict = json.loads(response, object_pairs_hook=OrderedDict)
+
+        return PSUUptime.construct_from_jdict(jdict)
+
+
+    def watchdog_start(self, interval):
+        response = self.communicate("w-start % d" % interval)
+
+        return response
+
+
+    def watchdog_stop(self):
+        response = self.communicate("w-stop")
+
+        return response
+
+
+    def watchdog_touch(self):
+        response = self.communicate("w-touch")
+
+        return response
+
+
+    def charge_pause(self, on):
+        state = 1 if bool(on) else 0
+        response = self.communicate("c-pause % d" % state)
+
+        return response
+
+
+    def charge_dead(self, on):
+        state = 1 if bool(on) else 0
+        response = self.communicate("c-dead % d" % state)
+
+        return response
+
+
+    # ----------------------------------------------------------------------------------------------------------------
+
+    def communicate(self, command):
+        ser = None
 
         try:
-            self.__mcu.write_reg(STM32.ADDR_POWER_WAIT_SECS, wait_secs)
-            self.__mcu.write_reg(STM32.ADDR_POWER_OFF_SECS, off_secs)
+            ser = HostSerial(self.__device, PSU.__BAUD_RATE, False)
 
-            self.__mcu.cmd(STM32.CMD_POWER_CYCLE)
+            ser.open(PSU.__SERIAL_TIMEOUT)
 
-        finally:
-            self.__mcu.close()
+            ser.write_line(command.strip())
+            response = ser.read_line("\r\n", PSU.__SERIAL_TIMEOUT)
 
-
-    def reset_watchdog(self):
-        self.__mcu.open()
-
-        try:
-            self.__mcu.cmd(STM32.CMD_WATCHDOG_RESET)
+            return response
 
         finally:
-            self.__mcu.close()
-
-
-    def set_rtc(self, datetime):
-        self.__mcu.open()
-
-        try:
-            print(datetime)
-
-            # TODO: load registers
-
-            self.__mcu.cmd(STM32.CMD_RTC_SET)
-
-        finally:
-            self.__mcu.close()
-
-
-    def run_rtc(self):
-        self.__mcu.open()
-
-        try:
-            self.__mcu.cmd(STM32.CMD_RTC_RUN)
-
-        finally:
-            self.__mcu.close()
-
-
-    def get_power(self):
-        self.__mcu.open()
-
-        try:
-            self.__mcu.cmd(STM32.CMD_ADC_READ)
-
-            socket_msb = self.__mcu.read_reg(STM32.ADDR_SOCKET_V_MSB)
-            socket_lsb = self.__mcu.read_reg(STM32.ADDR_SOCKET_V_LSB)
-
-            socket = socket_msb << 8 | socket_lsb
-
-            battery_msb = self.__mcu.read_reg(STM32.ADDR_BATTERY_V_MSB)
-            battery_lsb = self.__mcu.read_reg(STM32.ADDR_BATTERY_V_LSB)
-
-            battery = battery_msb << 8 | battery_lsb
-
-            return socket, battery
-
-        finally:
-            self.__mcu.close()
-
-
-    def get_version(self):
-        self.__mcu.open()
-
-        try:
-            version = self.__mcu.read_reg(STM32.ADDR_VERSION)
-
-            software_version = version >> 4
-            hardware_version = version & 0x0f
-
-            return software_version, hardware_version
-
-        finally:
-            self.__mcu.close()
-
-
-    def get_psu_status(self):
-        pass
-
-
-    def get_startup_status(self):
-        pass
+            if ser:
+                ser.close()
 
 
     # ----------------------------------------------------------------------------------------------------------------
 
     def __str__(self, *args, **kwargs):
-        return "PSU:{mcu:%s}" % self.__mcu
+        return "PSU:{device:%s}" % self.__device
