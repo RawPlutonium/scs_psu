@@ -24,7 +24,9 @@ class PSU(object):
 
     __BAUD_RATE =           1200
 
-    __SERIAL_TIMEOUT =      4.0
+    __EOL =                 "\n"
+
+    __SERIAL_TIMEOUT =      3.0
 
 
     # ----------------------------------------------------------------------------------------------------------------
@@ -114,7 +116,7 @@ class PSU(object):
             ser.open(PSU.__SERIAL_TIMEOUT)
 
             ser.write_line(command.strip())
-            response = ser.read_line("\r\n", PSU.__SERIAL_TIMEOUT)
+            response = ser.read_line(PSU.__EOL, PSU.__SERIAL_TIMEOUT)
 
             return response
 
